@@ -4,6 +4,7 @@ from config_manager import ConfigManager
 from arduino_connection import ArduinoConnectionDialog, ArduinoManager
 from laser_control import LaserControlDialog
 from cnc_control import CNCControlDialog
+from calibration_control import CalibrationDialog
 import logging
 
 # Configurar logging
@@ -129,6 +130,13 @@ class MainWindow:
                                            command=self.show_cnc_control,
                                            state='disabled')
         self.cnc_control_button.pack(pady=10)
+        
+        # Botón de calibración (inicialmente deshabilitado)
+        self.calibration_button = ttk.Button(self.control_panel,
+                                           text="Calibración",
+                                           command=self.show_calibration,
+                                           state='disabled')
+        self.calibration_button.pack(pady=10)
     
     def show_connection_dialog(self):
         if not self.arduino_manager.is_connected():
@@ -140,6 +148,7 @@ class MainWindow:
                 # Habilitar botones de control
                 self.laser_control_button.configure(state='normal')
                 self.cnc_control_button.configure(state='normal')
+                self.calibration_button.configure(state='normal')
     
     def show_laser_control(self):
         logger.debug("Mostrando control láser")
@@ -150,6 +159,10 @@ class MainWindow:
     def show_cnc_control(self):
         logger.debug("Mostrando control CNC")
         dialog = CNCControlDialog(self.root, self.arduino_manager)
+    
+    def show_calibration(self):
+        logger.debug("Mostrando ventana de calibración")
+        dialog = CalibrationDialog(self.root, self.arduino_manager)
     
     def run(self):
         self.root.mainloop() 

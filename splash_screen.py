@@ -29,7 +29,7 @@ class SplashScreen:
         try:
             # Cargar y redimensionar la imagen
             img = Image.open("logo.png")  # Asegúrate de tener este archivo
-            img = img.resize((400, 250))  # Ajusta el tamaño según necesites
+            img = img.resize((650, 250))  # Ajusta el tamaño según necesites
             self.logo = ImageTk.PhotoImage(img)
             
             # Mostrar la imagen
