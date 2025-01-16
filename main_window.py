@@ -3,6 +3,7 @@ from tkinter import ttk
 from config_manager import ConfigManager
 from arduino_connection import ArduinoConnectionDialog, ArduinoManager
 from laser_control import LaserControlDialog
+from cnc_control import CNCControlDialog
 import logging
 
 # Configurar logging
@@ -121,6 +122,13 @@ class MainWindow:
                                              command=self.show_laser_control,
                                              state='disabled')
         self.laser_control_button.pack(pady=10)
+        
+        # Botón de control CNC (inicialmente deshabilitado)
+        self.cnc_control_button = ttk.Button(self.control_panel, 
+                                           text="Control CNC",
+                                           command=self.show_cnc_control,
+                                           state='disabled')
+        self.cnc_control_button.pack(pady=10)
     
     def show_connection_dialog(self):
         if not self.arduino_manager.is_connected():
@@ -129,14 +137,19 @@ class MainWindow:
             
             if self.arduino_manager.board:
                 self.connect_button.configure(text="Conectado", state='disabled')
-                # Habilitar botón de control láser
+                # Habilitar botones de control
                 self.laser_control_button.configure(state='normal')
+                self.cnc_control_button.configure(state='normal')
     
     def show_laser_control(self):
         logger.debug("Mostrando control láser")
         # Pasar la instancia existente del ArduinoManager
         dialog = LaserControlDialog(self.root, self.arduino_manager)
         dialog.dialog.protocol("WM_DELETE_WINDOW", dialog.on_closing)
+    
+    def show_cnc_control(self):
+        logger.debug("Mostrando control CNC")
+        dialog = CNCControlDialog(self.root, self.arduino_manager)
     
     def run(self):
         self.root.mainloop() 
