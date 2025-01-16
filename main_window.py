@@ -2,6 +2,12 @@ import tkinter as tk
 from tkinter import ttk
 from config_manager import ConfigManager
 from arduino_connection import ArduinoConnectionDialog, ArduinoManager
+from laser_control import LaserControlDialog
+import logging
+
+# Configurar logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('MainWindow')
 
 class WorkArea(tk.Canvas):
     def __init__(self, parent):
@@ -108,6 +114,13 @@ class MainWindow:
                                        text="Conectar Arduino",
                                        command=self.show_connection_dialog)
         self.connect_button.pack(pady=10)
+        
+        # Botón de control láser (inicialmente deshabilitado)
+        self.laser_control_button = ttk.Button(self.control_panel, 
+                                             text="Control Láser",
+                                             command=self.show_laser_control,
+                                             state='disabled')
+        self.laser_control_button.pack(pady=10)
     
     def show_connection_dialog(self):
         if not self.arduino_manager.is_connected():
@@ -116,6 +129,14 @@ class MainWindow:
             
             if self.arduino_manager.board:
                 self.connect_button.configure(text="Conectado", state='disabled')
+                # Habilitar botón de control láser
+                self.laser_control_button.configure(state='normal')
+    
+    def show_laser_control(self):
+        logger.debug("Mostrando control láser")
+        # Pasar la instancia existente del ArduinoManager
+        dialog = LaserControlDialog(self.root, self.arduino_manager)
+        dialog.dialog.protocol("WM_DELETE_WINDOW", dialog.on_closing)
     
     def run(self):
         self.root.mainloop() 

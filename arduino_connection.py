@@ -1,6 +1,11 @@
 import serial.tools.list_ports
 from tkinter import ttk, Toplevel, messagebox
 from pymata4 import pymata4
+from arduino_manager import ArduinoManager
+from config_manager import ConfigManager
+import logging
+
+logger = logging.getLogger('ArduinoConnection')
 
 class ArduinoConnectionDialog:
     def __init__(self, parent):
@@ -8,6 +13,10 @@ class ArduinoConnectionDialog:
         self.dialog.title("Conectar Arduino")
         self.dialog.geometry("300x400")
         self.dialog.configure(bg='#1e1e1e')
+        
+        # Obtener instancia del ArduinoManager
+        self.arduino_manager = ArduinoManager()
+        logger.debug("ArduinoManager instanciado")
         
         # Hacer la ventana modal
         self.dialog.transient(parent)
@@ -76,50 +85,27 @@ class ArduinoConnectionDialog:
     
     def connect_to_port(self, port):
         try:
+            logger.debug(f"Intentando conectar a {port}")
+            
             # Intentar conectar con Arduino
-            self.board = pymata4.Pymata4(com_port=port)
+            board = pymata4.Pymata4(com_port=port)
+            logger.debug("Conexión con Arduino establecida")
             
-            # Si la conexión es exitosa
-            messagebox.showinfo("Éxito", 
-                              f"Conectado exitosamente a {port}")
+            # Guardar la conexión en el ArduinoManager
+            logger.debug("Guardando conexión en ArduinoManager")
+            self.arduino_manager.board = board
             
-            # Actualizar el ArduinoManager
-            arduino_manager = ArduinoManager()
-            arduino_manager.board = self.board
-            
-            self.dialog.destroy()
+            if self.arduino_manager.is_connected():
+                logger.debug("Conexión verificada en ArduinoManager")
+                messagebox.showinfo("Éxito", 
+                                  f"Conectado exitosamente a {port}")
+                self.dialog.destroy()
+            else:
+                logger.error("Error: La conexión no se guardó correctamente")
+                messagebox.showerror("Error", 
+                                   "Error al guardar la conexión")
             
         except Exception as e:
+            logger.error(f"Error de conexión: {e}")
             messagebox.showerror("Error", 
-                               f"No se pudo conectar a {port}\n{str(e)}")
-            self.board = None
-
-class ArduinoManager:
-    _instance = None
-    _board = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(ArduinoManager, cls).__new__(cls)
-        return cls._instance
-    
-    @property
-    def board(self):
-        return self._board
-    
-    @board.setter
-    def board(self, value):
-        self._board = value
-    
-    def is_connected(self):
-        return self._board is not None
-    
-    def disconnect(self):
-        if self._board:
-            try:
-                self._board.shutdown()
-                self._board = None
-                return True
-            except:
-                return False
-        return True 
+                               f"No se pudo conectar a {port}\n{str(e)}") 
