@@ -1,0 +1,36 @@
+{
+    "x_dir": "9",
+    "x_step": "8",
+    "x_home": "11",
+    "x_end": "13",
+    "y_dir": "4",
+    "y_step": "5",
+    "y_home": "6",
+    "y_end": "7",
+    "pwm_pin": "3",
+    "length": "300",
+    "width": "300",
+    "steps_x": "37.5",
+    "steps_y": "30",
+    "machine_name": "ok",
+    "laser_type": "0.5",
+    "machines": {
+        "ok": {
+            "x_dir": "9",
+            "x_step": "8",
+            "x_home": "11",
+            "x_end": "13",
+            "y_dir": "4",
+            "y_step": "5",
+            "y_home": "6",
+            "y_end": "7",
+            "pwm_pin": "3",
+            "length": "300",
+            "width": "300",
+            "steps_x": "37.5",
+            "steps_y": "30",
+            "machine_name": "ok",
+            "laser_type": "0.5"
+        }
+    }
+}

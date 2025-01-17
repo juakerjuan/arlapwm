@@ -10,8 +10,8 @@
     "pwm_pin": "3",
     "length": "300",
     "width": "300",
-    "steps_x": "37.5",
-    "steps_y": "37.5",
+    "steps_x": "30",
+    "steps_y": "30",
     "machine_name": "ok",
     "laser_type": "0.5"
 }
