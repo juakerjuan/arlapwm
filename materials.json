@@ -1,0 +1,25 @@
+{
+    "materials": [
+        {
+            "name": "PCB FR4",
+            "speed": 800,
+            "power": 255,
+            "engrave_type": "outline",
+            "description": "Placa de circuito FR4 est\u00e1ndar"
+        },
+        {
+            "name": "PCB FR4 Grueso",
+            "speed": 600,
+            "power": 255,
+            "engrave_type": "mixed",
+            "description": "Placa FR4 con pistas gruesas"
+        },
+        {
+            "name": "PCB FR4 Mixto",
+            "speed": 700,
+            "power": 255,
+            "engrave_type": "mixed",
+            "description": "Placa FR4 con pistas mixtas"
+        }
+    ]
+}

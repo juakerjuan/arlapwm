@@ -11,6 +11,9 @@ import tkinter.messagebox as messagebox
 from tkinter import filedialog
 from PIL import Image, ImageTk
 from pcb_processor import PCBProcessor
+import threading
+import time
+from material_manager import MaterialManager
 
 # Configurar logging
 logging.basicConfig(level=logging.DEBUG)
@@ -222,6 +225,348 @@ class WorkArea(tk.Canvas):
             
             self.draw_all()
 
+class WorkDialog:
+    def __init__(self, parent):
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Trabajo en Progreso")
+        
+        # Hacer la ventana modal
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        # Quitar marcos de la ventana
+        self.dialog.overrideredirect(True)
+        
+        # Centrar la ventana con nuevo tamaño
+        window_width = 500
+        window_height = 500
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.dialog.geometry(f'{window_width}x{window_height}+{x}+{y}')
+        
+        # Asegurar que la ventana esté por encima
+        self.dialog.lift()
+        self.dialog.focus_force()
+        
+        # Configurar color de fondo
+        self.dialog.configure(bg='#2d2d2d')
+        
+        # Etiqueta de estado
+        self.status_label = tk.Label(self.dialog,
+                                   text="Trabajo en progreso...",
+                                   font=('Arial', 14, 'bold'),
+                                   bg='#2d2d2d',
+                                   fg='white')
+        self.status_label.pack(pady=40)
+        
+        # Frame para el botón (centrado)
+        button_frame = tk.Frame(self.dialog, bg='#2d2d2d')
+        button_frame.pack(side='bottom', pady=40)
+        
+        # Botón de cancelar más grande
+        self.cancel_button = ttk.Button(button_frame,
+                                      text="Cancelar",
+                                      command=self.cancel_work,
+                                      width=20)  # Hacer el botón más ancho
+        self.cancel_button.pack()
+        
+        # Evitar que se cierre con Alt+F4 o la X
+        self.dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+        
+        # Borde para hacer la ventana más visible
+        self.dialog.configure(highlightbackground='#3d3d3d',
+                            highlightthickness=2)
+        
+        # Añadir MaterialManager
+        self.material_manager = MaterialManager()
+        
+        # Frame para selección de material
+        material_frame = tk.Frame(self.dialog, bg='#2d2d2d')
+        material_frame.pack(pady=20)
+        
+        # Label para material
+        material_label = tk.Label(material_frame,
+                                text="Material:",
+                                font=('Arial', 12),
+                                bg='#2d2d2d',
+                                fg='white')
+        material_label.pack(side='left', padx=10)
+        
+        # Combobox para materiales
+        self.material_var = tk.StringVar()
+        self.material_combo = ttk.Combobox(material_frame,
+                                         textvariable=self.material_var,
+                                         values=self.material_manager.get_material_names(),
+                                         width=20,
+                                         state='readonly')
+        self.material_combo.pack(side='left', padx=10)
+        
+        # Si hay materiales, seleccionar el primero
+        if self.material_manager.get_materials():
+            self.material_combo.set(self.material_manager.get_material_names()[0])
+        
+        # Bind para cambio de material
+        self.material_combo.bind('<<ComboboxSelected>>', self.on_material_change)
+        
+        # Frame para información del material
+        self.info_frame = tk.Frame(self.dialog, bg='#2d2d2d')
+        self.info_frame.pack(pady=20)
+        
+        # Actualizar información del material
+        self.update_material_info()
+        
+        # Frame para botones de material
+        material_buttons_frame = tk.Frame(material_frame, bg='#2d2d2d')
+        material_buttons_frame.pack(side='left', padx=5)
+        
+        # Botones para editar y añadir material
+        self.edit_button = ttk.Button(material_buttons_frame,
+                                    text="✎",  # Símbolo de editar
+                                    width=3,
+                                    command=self.edit_material)
+        self.edit_button.pack(side='left', padx=2)
+        
+        self.add_button = ttk.Button(material_buttons_frame,
+                                   text="+",
+                                   width=3,
+                                   command=self.add_material)
+        self.add_button.pack(side='left', padx=2)
+    
+    def on_material_change(self, event=None):
+        """Manejar cambio de material"""
+        self.update_material_info()
+    
+    def update_material_info(self):
+        """Actualizar información del material seleccionado"""
+        # Limpiar frame de información
+        for widget in self.info_frame.winfo_children():
+            widget.destroy()
+        
+        # Obtener material seleccionado
+        material_name = self.material_var.get()
+        material = self.material_manager.get_material_by_name(material_name)
+        
+        if material:
+            # Mostrar información del material
+            info_text = f"""
+            Velocidad: {material['speed']} mm/min
+            Potencia: {material['power']}
+            Tipo de grabado: {material['engrave_type']}
+            
+            {material['description']}
+            """
+            
+            info_label = tk.Label(self.info_frame,
+                                text=info_text,
+                                font=('Arial', 11),
+                                bg='#2d2d2d',
+                                fg='white',
+                                justify='left')
+            info_label.pack(pady=10)
+    
+    def cancel_work(self):
+        """Cancelar el trabajo"""
+        if messagebox.askyesno("Cancelar", 
+                             "¿Estás seguro de que quieres cancelar el trabajo?"):
+            self.dialog.destroy()
+    
+    def edit_material(self):
+        """Editar material seleccionado"""
+        material_name = self.material_var.get()
+        material = self.material_manager.get_material_by_name(material_name)
+        if material:
+            dialog = MaterialDialog(self.dialog, material)
+            if dialog.result:
+                # Actualizar material
+                self.material_manager.update_material(material_name, dialog.result)
+                self.update_material_list()
+    
+    def add_material(self):
+        """Añadir nuevo material"""
+        dialog = MaterialDialog(self.dialog)
+        if dialog.result:
+            # Añadir nuevo material
+            self.material_manager.add_material(dialog.result)
+            self.update_material_list()
+    
+    def update_material_list(self):
+        """Actualizar lista de materiales en el combobox"""
+        current = self.material_var.get()
+        materials = self.material_manager.get_material_names()
+        self.material_combo['values'] = materials
+        
+        # Mantener selección actual si existe, sino seleccionar el primero
+        if current in materials:
+            self.material_combo.set(current)
+        elif materials:
+            self.material_combo.set(materials[0])
+        
+        self.update_material_info()
+
+class MaterialDialog:
+    def __init__(self, parent, material=None):
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Editar Material" if material else "Nuevo Material")
+        
+        # Hacer la ventana modal y fija
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        self.dialog.overrideredirect(True)  # Quitar marcos de la ventana
+        
+        # Configurar ventana
+        self.dialog.configure(bg='#2d2d2d')
+        
+        # Tamaño fijo y centrado
+        window_width = 400
+        window_height = 500
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.dialog.geometry(f'{window_width}x{window_height}+{x}+{y}')
+        
+        # Asegurar que la ventana esté por encima
+        self.dialog.lift()
+        self.dialog.focus_force()
+        
+        # Borde para hacer la ventana más visible
+        self.dialog.configure(highlightbackground='#3d3d3d',
+                            highlightthickness=2)
+        
+        # Variables
+        self.name_var = tk.StringVar(value=material['name'] if material else '')
+        self.speed_var = tk.StringVar(value=str(material['speed']) if material else '800')
+        self.power_var = tk.StringVar(value=str(material['power']) if material else '255')
+        self.type_var = tk.StringVar(value=material['engrave_type'] if material else 'outline')
+        self.desc_var = tk.StringVar(value=material['description'] if material else '')
+        
+        # Crear campos
+        self.create_fields()
+        
+        # Resultado
+        self.result = None
+        
+        # Evitar que se cierre con Alt+F4
+        self.dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+        
+        # Esperar resultado
+        self.dialog.wait_window()
+    
+    def create_fields(self):
+        """Crear campos del formulario"""
+        # Nombre
+        self.create_field("Nombre:", self.name_var)
+        
+        # Velocidad
+        self.create_field("Velocidad (mm/min):", self.speed_var)
+        
+        # Potencia
+        self.create_field("Potencia (0-255):", self.power_var)
+        
+        # Tipo de grabado
+        type_frame = tk.Frame(self.dialog, bg='#2d2d2d')
+        type_frame.pack(pady=10, padx=20, fill='x')
+        
+        tk.Label(type_frame, 
+                text="Tipo de grabado:",
+                bg='#2d2d2d',
+                fg='white').pack(anchor='w')
+        
+        types = [('Contorno', 'outline'), 
+                ('Relleno', 'fill'), 
+                ('Mixto', 'mixed')]
+        
+        for text, value in types:
+            tk.Radiobutton(type_frame,
+                          text=text,
+                          value=value,
+                          variable=self.type_var,
+                          bg='#2d2d2d',
+                          fg='white',
+                          selectcolor='#3d3d3d',
+                          activebackground='#2d2d2d').pack(anchor='w')
+        
+        # Descripción
+        desc_frame = tk.Frame(self.dialog, bg='#2d2d2d')
+        desc_frame.pack(pady=10, padx=20, fill='x')
+        
+        tk.Label(desc_frame,
+                text="Descripción:",
+                bg='#2d2d2d',
+                fg='white').pack(anchor='w')
+        
+        self.desc_text = tk.Text(desc_frame,
+                               height=4,
+                               width=40,
+                               bg='#3d3d3d',
+                               fg='white')
+        self.desc_text.pack(fill='x')
+        if self.desc_var.get():
+            self.desc_text.insert('1.0', self.desc_var.get())
+        
+        # Botones
+        button_frame = tk.Frame(self.dialog, bg='#2d2d2d')
+        button_frame.pack(pady=20)
+        
+        ttk.Button(button_frame,
+                  text="Guardar",
+                  command=self.save).pack(side='left', padx=5)
+        
+        ttk.Button(button_frame,
+                  text="Cancelar",
+                  command=self.cancel).pack(side='left', padx=5)
+    
+    def create_field(self, label_text, variable):
+        """Crear campo de entrada con etiqueta"""
+        frame = tk.Frame(self.dialog, bg='#2d2d2d')
+        frame.pack(pady=10, padx=20, fill='x')
+        
+        tk.Label(frame,
+                text=label_text,
+                bg='#2d2d2d',
+                fg='white').pack(side='left')
+        
+        tk.Entry(frame,
+                textvariable=variable,
+                bg='#3d3d3d',
+                fg='white',
+                width=20).pack(side='right')
+    
+    def save(self):
+        """Guardar cambios"""
+        try:
+            # Validar campos
+            name = self.name_var.get().strip()
+            speed = int(self.speed_var.get())
+            power = int(self.power_var.get())
+            
+            if not name:
+                raise ValueError("El nombre es obligatorio")
+            if not (0 <= power <= 255):
+                raise ValueError("La potencia debe estar entre 0 y 255")
+            if speed <= 0:
+                raise ValueError("La velocidad debe ser mayor que 0")
+            
+            # Crear resultado
+            self.result = {
+                'name': name,
+                'speed': speed,
+                'power': power,
+                'engrave_type': self.type_var.get(),
+                'description': self.desc_text.get('1.0', 'end-1c')
+            }
+            
+            self.dialog.destroy()
+            
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
+    
+    def cancel(self):
+        """Cancelar edición"""
+        self.dialog.destroy()
+
 class MainWindow:
     def __init__(self):
         self.root = tk.Tk()
@@ -275,6 +620,13 @@ class MainWindow:
                                    command=self.load_pcb,
                                    style='Dark.TButton')
         self.pcb_button.pack(pady=5)
+        
+        # Botón de trabajo (inicialmente deshabilitado)
+        self.work_button = ttk.Button(self.control_panel,
+                                    text="Iniciar Trabajo",
+                                    command=self.start_work,
+                                    state='disabled')
+        self.work_button.pack(pady=10)
     
     def show_connection_dialog(self):
         if not self.arduino_manager.is_connected():
@@ -287,6 +639,8 @@ class MainWindow:
                 self.laser_control_button.configure(state='normal')
                 self.cnc_control_button.configure(state='normal')
                 self.calibration_button.configure(state='normal')
+                # Verificar si podemos habilitar el botón de trabajo
+                self.check_work_button()
     
     def show_laser_control(self):
         logger.debug("Mostrando control láser")
@@ -323,9 +677,34 @@ class MainWindow:
                 if preview:
                     # Mostrar en el área de trabajo
                     self.work_area.show_pcb(preview, dims)
+                    # Verificar si podemos habilitar el botón de trabajo
+                    self.check_work_button()
             else:
                 messagebox.showerror("Error", 
                                    "Error cargando archivo de imagen")
+    
+    def check_work_button(self):
+        """Verificar si podemos habilitar el botón de trabajo"""
+        if (self.arduino_manager.is_connected() and 
+            self.work_area.pcb_image is not None):
+            self.work_button.configure(state='normal')
+            logger.info("Botón de trabajo habilitado")
+        else:
+            self.work_button.configure(state='disabled')
+            logger.debug("Botón de trabajo deshabilitado")
+    
+    def start_work(self):
+        """Iniciar el trabajo de grabado"""
+        if not self.arduino_manager.is_connected():
+            messagebox.showerror("Error", "Arduino no conectado")
+            return
+            
+        if not self.work_area.pcb_image:
+            messagebox.showerror("Error", "No hay PCB cargado")
+            return
+        
+        # Solo crear y mostrar el diálogo
+        work_dialog = WorkDialog(self.root)
     
     def run(self):
         self.root.mainloop() 
