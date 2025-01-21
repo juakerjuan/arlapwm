@@ -226,18 +226,20 @@ class WorkArea(tk.Canvas):
             self.draw_all()
 
 class WorkDialog:
-    def __init__(self, parent):
+    def __init__(self, parent, pcb_image, pcb_position):
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Trabajo en Progreso")
         
-        # Hacer la ventana modal
+        # Hacer la ventana modal y asegurar que esté por encima
         self.dialog.transient(parent)
         self.dialog.grab_set()
+        self.dialog.lift()
+        self.dialog.focus_force()
         
         # Quitar marcos de la ventana
         self.dialog.overrideredirect(True)
         
-        # Centrar la ventana con nuevo tamaño
+        # Centrar la ventana
         window_width = 500
         window_height = 500
         screen_width = parent.winfo_screenwidth()
@@ -246,38 +248,15 @@ class WorkDialog:
         y = (screen_height - window_height) // 2
         self.dialog.geometry(f'{window_width}x{window_height}+{x}+{y}')
         
-        # Asegurar que la ventana esté por encima
-        self.dialog.lift()
-        self.dialog.focus_force()
-        
-        # Configurar color de fondo
-        self.dialog.configure(bg='#2d2d2d')
-        
-        # Etiqueta de estado
-        self.status_label = tk.Label(self.dialog,
-                                   text="Trabajo en progreso...",
-                                   font=('Arial', 14, 'bold'),
-                                   bg='#2d2d2d',
-                                   fg='white')
-        self.status_label.pack(pady=40)
-        
-        # Frame para el botón (centrado)
-        button_frame = tk.Frame(self.dialog, bg='#2d2d2d')
-        button_frame.pack(side='bottom', pady=40)
-        
-        # Botón de cancelar más grande
-        self.cancel_button = ttk.Button(button_frame,
-                                      text="Cancelar",
-                                      command=self.cancel_work,
-                                      width=20)  # Hacer el botón más ancho
-        self.cancel_button.pack()
-        
-        # Evitar que se cierre con Alt+F4 o la X
-        self.dialog.protocol("WM_DELETE_WINDOW", lambda: None)
-        
-        # Borde para hacer la ventana más visible
-        self.dialog.configure(highlightbackground='#3d3d3d',
+        # Borde visible
+        self.dialog.configure(bg='#2d2d2d',
+                            highlightbackground='#3d3d3d',
                             highlightthickness=2)
+        
+        # Guardar referencia a la imagen y posición del PCB
+        self.pcb_image = pcb_image
+        self.pcb_position = pcb_position
+        self.config_manager = ConfigManager()
         
         # Añadir MaterialManager
         self.material_manager = MaterialManager()
@@ -303,27 +282,13 @@ class WorkDialog:
                                          state='readonly')
         self.material_combo.pack(side='left', padx=10)
         
-        # Si hay materiales, seleccionar el primero
-        if self.material_manager.get_materials():
-            self.material_combo.set(self.material_manager.get_material_names()[0])
-        
-        # Bind para cambio de material
-        self.material_combo.bind('<<ComboboxSelected>>', self.on_material_change)
-        
-        # Frame para información del material
-        self.info_frame = tk.Frame(self.dialog, bg='#2d2d2d')
-        self.info_frame.pack(pady=20)
-        
-        # Actualizar información del material
-        self.update_material_info()
-        
         # Frame para botones de material
         material_buttons_frame = tk.Frame(material_frame, bg='#2d2d2d')
         material_buttons_frame.pack(side='left', padx=5)
         
         # Botones para editar y añadir material
         self.edit_button = ttk.Button(material_buttons_frame,
-                                    text="✎",  # Símbolo de editar
+                                    text="✎",
                                     width=3,
                                     command=self.edit_material)
         self.edit_button.pack(side='left', padx=2)
@@ -333,44 +298,163 @@ class WorkDialog:
                                    width=3,
                                    command=self.add_material)
         self.add_button.pack(side='left', padx=2)
+        
+        # Frame para la vista previa
+        preview_frame = tk.Frame(self.dialog, bg='#2d2d2d')
+        preview_frame.pack(pady=20)
+        
+        # Canvas para la vista previa
+        self.preview_canvas = tk.Canvas(
+            preview_frame,
+            width=300,
+            height=300,
+            bg='#1e1e1e',
+            highlightthickness=1,
+            highlightbackground='#3d3d3d'
+        )
+        self.preview_canvas.pack()
+        
+        # Frame para botones
+        button_frame = tk.Frame(self.dialog, bg='#2d2d2d')
+        button_frame.pack(side='bottom', pady=20)
+        
+        # Botón de generar G-code
+        self.gcode_button = ttk.Button(button_frame,
+                                     text="Generar G-code ARLA",
+                                     command=self.generate_gcode,
+                                     width=20)
+        self.gcode_button.pack(side='left', padx=10)
+        
+        # Botón de cancelar
+        self.cancel_button = ttk.Button(button_frame,
+                                      text="Cancelar",
+                                      command=self.cancel_work,
+                                      width=20)
+        self.cancel_button.pack(side='left', padx=10)
+        
+        # Si hay materiales, seleccionar el primero
+        if self.material_manager.get_materials():
+            self.material_combo.set(self.material_manager.get_material_names()[0])
+            
+        # Bind para cambio de material
+        self.material_combo.bind('<<ComboboxSelected>>', self.update_preview)
+        
+        # Mostrar vista previa inicial
+        self.update_preview()
+        
+        # Evitar que se cierre con Alt+F4
+        self.dialog.protocol("WM_DELETE_WINDOW", lambda: None)
     
-    def on_material_change(self, event=None):
-        """Manejar cambio de material"""
-        self.update_material_info()
-    
-    def update_material_info(self):
-        """Actualizar información del material seleccionado"""
-        # Limpiar frame de información
-        for widget in self.info_frame.winfo_children():
-            widget.destroy()
+    def update_preview(self, event=None):
+        """Actualizar vista previa según el tipo de grabado"""
+        if not self.pcb_image:
+            return
+            
+        # Limpiar canvas
+        self.preview_canvas.delete('all')
         
         # Obtener material seleccionado
-        material_name = self.material_var.get()
-        material = self.material_manager.get_material_by_name(material_name)
+        material = self.material_manager.get_material_by_name(
+            self.material_var.get()
+        )
+        if not material:
+            return
         
-        if material:
-            # Mostrar información del material
-            info_text = f"""
-            Velocidad: {material['speed']} mm/min
-            Potencia: {material['power']}
-            Tipo de grabado: {material['engrave_type']}
-            
-            {material['description']}
-            """
-            
-            info_label = tk.Label(self.info_frame,
-                                text=info_text,
-                                font=('Arial', 11),
-                                bg='#2d2d2d',
-                                fg='white',
-                                justify='left')
-            info_label.pack(pady=10)
+        # Crear copia de la imagen para procesar
+        from PIL import Image, ImageTk
+        preview_image = self.pcb_image.copy()
+        
+        # Asegurar que la imagen está en modo 'L' (escala de grises)
+        if preview_image.mode != 'L':
+            preview_image = preview_image.convert('L')
+        
+        # Escalar imagen para el canvas manteniendo proporción
+        canvas_width = 300  # Tamaño fijo para el preview
+        canvas_height = 300
+        
+        img_width, img_height = preview_image.size
+        scale = min(
+            canvas_width / img_width,
+            canvas_height / img_height
+        )
+        
+        new_width = int(img_width * scale)
+        new_height = int(img_height * scale)
+        
+        # Redimensionar imagen
+        preview_image = preview_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        # Centrar en canvas
+        x = (canvas_width - new_width) // 2
+        y = (canvas_height - new_height) // 2
+        
+        # Convertir a PhotoImage
+        self.preview_photo = ImageTk.PhotoImage(preview_image)
+        
+        # Mostrar imagen base
+        self.preview_canvas.create_image(
+            x, y,
+            image=self.preview_photo,
+            anchor='nw'
+        )
+        
+        # Superponer visualización según tipo de grabado
+        if material['engrave_type'] == 'outline':
+            self.show_outline_overlay(x, y, new_width, new_height)
+        elif material['engrave_type'] == 'fill':
+            self.show_fill_overlay(x, y, new_width, new_height)
+        else:  # mixed
+            self.show_mixed_overlay(x, y, new_width, new_height)
     
-    def cancel_work(self):
-        """Cancelar el trabajo"""
-        if messagebox.askyesno("Cancelar", 
-                             "¿Estás seguro de que quieres cancelar el trabajo?"):
-            self.dialog.destroy()
+    def show_outline_overlay(self, x, y, width, height):
+        """Mostrar overlay de contorno"""
+        # Dibujar línea de contorno
+        self.preview_canvas.create_rectangle(
+            x, y, x + width, y + height,
+            outline='#00ff00',
+            width=2
+        )
+        
+        self.preview_canvas.create_text(
+            x + width//2,
+            y + height + 20,
+            text="Vista previa: Contorno",
+            fill='white',
+            font=('Arial', 10)
+        )
+    
+    def show_fill_overlay(self, x, y, width, height):
+        """Mostrar overlay de relleno"""
+        # Dibujar patrón de líneas
+        spacing = 5
+        for i in range(0, width, spacing):
+            self.preview_canvas.create_line(
+                x + i, y,
+                x + i, y + height,
+                fill='#00ff00',
+                width=1
+            )
+        
+        self.preview_canvas.create_text(
+            x + width//2,
+            y + height + 20,
+            text="Vista previa: Relleno",
+            fill='white',
+            font=('Arial', 10)
+        )
+    
+    def show_mixed_overlay(self, x, y, width, height):
+        """Mostrar overlay mixto"""
+        self.show_fill_overlay(x, y, width, height)
+        self.show_outline_overlay(x, y, width, height)
+        
+        self.preview_canvas.create_text(
+            x + width//2,
+            y + height + 20,
+            text="Vista previa: Mixto",
+            fill='white',
+            font=('Arial', 10)
+        )
     
     def edit_material(self):
         """Editar material seleccionado"""
@@ -403,7 +487,73 @@ class WorkDialog:
         elif materials:
             self.material_combo.set(materials[0])
         
-        self.update_material_info()
+        self.update_preview()
+    
+    def cancel_work(self):
+        """Cancelar el trabajo"""
+        if messagebox.askyesno("Cancelar", 
+                             "¿Estás seguro de que quieres cancelar el trabajo?"):
+            self.dialog.destroy()
+    
+    def generate_gcode(self):
+        """Generar archivo G-code"""
+        try:
+            # Obtener material seleccionado
+            material = self.material_manager.get_material_by_name(
+                self.material_var.get()
+            )
+            
+            if not material:
+                messagebox.showerror("Error", "No hay material seleccionado")
+                return
+            
+            # Pedir ubicación para guardar
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".arla",
+                filetypes=[("ARLA G-code", "*.arla")],
+                title="Guardar G-code ARLA"
+            )
+            
+            if file_path:
+                # Asegurarnos de que tenemos la imagen correcta
+                if not hasattr(self, 'pcb_image') or not self.pcb_image:
+                    messagebox.showerror("Error", "No hay imagen PCB")
+                    return
+                
+                logger.debug(f"Generando G-code para imagen: {self.pcb_image.size}")
+                logger.debug(f"Posición: {self.pcb_position}")
+                
+                # Recopilar datos para el generador
+                gcode_data = {
+                    'image': self.pcb_image,
+                    'position': self.pcb_position,
+                    'material': material,
+                    'machine_config': self.config_manager.get_machine_config()
+                }
+                
+                # Generar G-code
+                from gcode_generator import GCodeGenerator
+                generator = GCodeGenerator()
+                success = generator.generate(gcode_data, file_path)
+                
+                if success:
+                    messagebox.showinfo(
+                        "Éxito",
+                        "G-code generado correctamente"
+                    )
+                    self.dialog.destroy()
+                else:
+                    messagebox.showerror(
+                        "Error",
+                        "Error generando G-code"
+                    )
+                    
+        except Exception as e:
+            logger.error(f"Error en generate_gcode: {e}")
+            messagebox.showerror(
+                "Error",
+                f"Error generando G-code: {str(e)}"
+            )
 
 class MaterialDialog:
     def __init__(self, parent, material=None):
@@ -703,8 +853,12 @@ class MainWindow:
             messagebox.showerror("Error", "No hay PCB cargado")
             return
         
-        # Solo crear y mostrar el diálogo
-        work_dialog = WorkDialog(self.root)
+        # Crear diálogo de trabajo con la imagen y posición actual
+        work_dialog = WorkDialog(
+            self.root,
+            self.work_area.pcb_image,
+            self.work_area.pcb_position
+        )
     
     def run(self):
         self.root.mainloop() 
